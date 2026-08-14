@@ -117,11 +117,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun recordIterateResult() {
         val sent = iterateSentPrompt ?: return
         if (iterateResult.isBlank()) return
-        repo.addRecord("iterate", iterateInput, sent, iterateResult, workspaceModeLabel(), "iterate", "通用迭代")
+        val result = iterateResult
+        repo.addRecord("iterate", iterateInput, sent, result, workspaceModeLabel(), "iterate", "通用迭代")
         iterateSentPrompt = null
         iterateResult = ""
         iterateInput = ""
-        workspaceResult = iterateResult
+        // 迭代结果回填到工作区（需在清空 iterateResult 前保存）
+        workspaceResult = result
     }
 
     // ===== 对话 =====
