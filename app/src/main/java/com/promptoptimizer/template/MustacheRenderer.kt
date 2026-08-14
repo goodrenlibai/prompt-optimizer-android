@@ -225,6 +225,13 @@ class MustacheRenderer(private val helpers: Map<String, (String) -> String> = em
     private fun currentContext(): Map<String, Any?> = context.last()
 
     private fun lookup(name: String): Any? {
+        // Mustache 隐式迭代器 {{.}}：直接查找当前上下文的 "." 键
+        if (name == ".") {
+            for (idx in context.indices.reversed()) {
+                if (context[idx].containsKey(".")) return context[idx]["."]
+            }
+            return null
+        }
         val parts = name.split(".")
         for (idx in context.indices.reversed()) {
             val ctx = context[idx]
