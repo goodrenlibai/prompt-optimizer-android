@@ -1,6 +1,6 @@
 package com.promptoptimizer
 
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
@@ -8,23 +8,40 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
-import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.promptoptimizer.ui.nav.NavGraph
+import com.promptoptimizer.ui.theme.PromptOptimizerTheme
+import com.promptoptimizer.ui.viewmodel.MainViewModel
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
-@RunWith(AndroidJUnit4::class)
+/**
+ * 基于 Robolectric 的 Compose UI 端到端测试。
+ *
+ * 覆盖：每个页面渲染、每个导航、以及所有交互（生成可复制提示词 → 复制 →
+ * 粘贴 AI 回复 → 保存结果）。在 JVM 上运行，无需模拟器。
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class AppFlowTest {
 
     @get:Rule
-    val composeRule = createAndroidComposeRule<MainActivity>()
+    val composeRule = createComposeRule()
 
     @Before
-    fun clearData() {
+    fun setUp() {
         val app = ApplicationProvider.getApplicationContext<PromptOptimizerApp>()
         app.repository.resetForTest()
+        val viewModel = MainViewModel(app)
+        composeRule.setContent {
+            PromptOptimizerTheme {
+                NavGraph(viewModel)
+            }
+        }
         composeRule.waitForIdle()
     }
 
@@ -49,7 +66,6 @@ class AppFlowTest {
         composeRule.onNodeWithText("模板管理").assertExists()
         composeRule.onNodeWithText("历史记录").assertExists()
         composeRule.onNodeWithText("如何使用（三步）").assertExists()
-        // 底部导航五项
         for (label in listOf("首页", "工作台", "专业", "测试评估", "收藏")) {
             composeRule.onNodeWithText(label).assertExists()
         }
@@ -75,26 +91,22 @@ class AppFlowTest {
     fun workspaceOptimizeFlow() {
         clickBottom("工作台")
         composeRule.onNodeWithText("工作台 · 基础·系统").assertExists()
-        // 模式切换
         composeRule.onNodeWithText("基础·用户").performClick()
         composeRule.onNodeWithText("工作台 · 基础·用户").assertExists()
         composeRule.onNodeWithText("基础·系统").performClick()
         composeRule.onNodeWithText("工作台 · 基础·系统").assertExists()
 
-        // 生成提示词
         composeRule.onNodeWithTag("workspaceInput").performTextInput("你是一位客服助手")
         composeRule.onNodeWithTag("workspaceGenerate").performClick()
         composeRule.waitForIdle()
-        // 对话框出现
         composeRule.onNodeWithTag("copyButton").assertExists()
         composeRule.onNodeWithTag("copyButton").performClick()
-        // 粘贴 AI 回复并确认
         pasteAndConfirm("你是一位专业的客服助手，请用友好语气解答问题。")
-        // 结果已展示
         composeRule.onNodeWithText("最近一次优化结果").assertExists()
-        // 历史已写入
+
         val history = ApplicationProvider.getApplicationContext<PromptOptimizerApp>().repository.getHistory()
         assertTrue(history.isNotEmpty())
+        assertTrue(history.any { it.operation == "optimize" })
     }
 
     @Test
@@ -105,13 +117,15 @@ class AppFlowTest {
         composeRule.waitForIdle()
         pasteAndConfirm("你是一位专业的写作顾问")
 
-        // 迭代区出现
         composeRule.onNodeWithTag("iterateInput").performTextInput("更专业一些")
         composeRule.onNodeWithTag("iterateGenerate").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("copyButton").assertExists()
         pasteAndConfirm("你是一位资深写作顾问，拥有丰富的创作经验。")
         composeRule.onNodeWithText("最近一次优化结果").assertExists()
+
+        val history = ApplicationProvider.getApplicationContext<PromptOptimizerApp>().repository.getHistory()
+        assertTrue(history.any { it.operation == "iterate" })
     }
 
     @Test
@@ -122,7 +136,6 @@ class AppFlowTest {
         composeRule.onNodeWithText("工作台 · 图像·文生图").assertExists()
         composeRule.onNodeWithText("基础·系统").performClick()
         composeRule.onNodeWithText("工作台 · 基础·系统").assertExists()
-        // 会话已恢复
         composeRule.onNodeWithTag("workspaceInput").assertExists()
     }
 
@@ -135,12 +148,10 @@ class AppFlowTest {
         composeRule.onNodeWithText("添加用户消息").performClick()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithTag("msgContent").onFirst().performTextInput("帮我写一个排序函数")
-        // 选中该消息并优化
         composeRule.onNodeWithText("优化选中消息（生成提示词）").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("copyButton").assertExists()
         pasteAndConfirm("请帮我用 Python 编写一个快速排序函数。")
-        // 历史写入
         val history = ApplicationProvider.getApplicationContext<PromptOptimizerApp>().repository.getHistory()
         assertTrue(history.any { it.operation == "messageOptimize" })
     }
@@ -155,9 +166,7 @@ class AppFlowTest {
         composeRule.onNodeWithTag("variableExtract").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("copyButton").assertExists()
-        // 模拟 AI 返回的变量 JSON
         pasteAndConfirm("""{"variables":[{"name":"主题","value":"科技"}]}""")
-        // 触发"② 生成变量示例值"
         composeRule.onNodeWithTag("variableValue").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("copyButton").assertExists()
@@ -223,14 +232,11 @@ class AppFlowTest {
         composeRule.onNodeWithTag("favContent").performTextInput("你是一位专家")
         composeRule.onNodeWithTag("favSave").performClick()
         composeRule.waitForIdle()
-        // 重新进入以验证渲染
         clickBottom("首页")
         clickBottom("收藏")
         composeRule.onNodeWithText("我的收藏").assertExists()
-        // 删除
         composeRule.onNodeWithTag("favDelete").performClick()
         composeRule.waitForIdle()
-        // 重新进入验证已删除
         clickBottom("首页")
         clickBottom("收藏")
         composeRule.onNodeWithText("我的收藏").assertDoesNotExist()
@@ -247,37 +253,15 @@ class AppFlowTest {
         composeRule.onNodeWithTag("tplContent").performTextInput("你是专家助手")
         composeRule.onNodeWithTag("tplSave").performClick()
         composeRule.waitForIdle()
-        // 重新进入验证
         clickBottom("首页")
         composeRule.onNodeWithText("模板管理").performClick()
         composeRule.onNodeWithText("我的自定义模板").assertExists()
-        // 删除自定义模板
         composeRule.onNodeWithTag("tplDelete").performClick()
         composeRule.waitForIdle()
         clickBottom("首页")
         composeRule.onNodeWithText("模板管理").performClick()
         composeRule.onNodeWithText("我的自定义模板").assertDoesNotExist()
-        // 内置模板仍存在
         composeRule.onNodeWithText("通用优化").assertExists()
-    }
-
-    @Test
-    fun historyDetailEditWorks() {
-        clickBottom("工作台")
-        composeRule.onNodeWithTag("workspaceInput").performTextInput("待编辑提示词")
-        composeRule.onNodeWithTag("workspaceGenerate").performClick()
-        composeRule.waitForIdle()
-        pasteAndConfirm("原始输出内容")
-        // 打开历史并编辑
-        clickBottom("首页")
-        composeRule.onNodeWithText("历史记录").performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("原始输出内容").performClick()
-        composeRule.waitForIdle()
-        // 编辑文本框（对话框内的 AI 回复）
-        composeRule.onNodeWithText("保存").performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("原始输出内容").assertExists()
     }
 
     // ============ 历史记录 ============
@@ -298,18 +282,33 @@ class AppFlowTest {
 
     @Test
     fun historyClearWorks() {
-        // 先产生一条记录
         clickBottom("工作台")
         composeRule.onNodeWithTag("workspaceInput").performTextInput("x")
         composeRule.onNodeWithTag("workspaceGenerate").performClick()
         composeRule.waitForIdle()
         pasteAndConfirm("y")
-        // 清空
         clickBottom("首页")
         composeRule.onNodeWithText("历史记录").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("清空").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("暂无历史记录").assertExists()
+    }
+
+    @Test
+    fun historyDetailEditWorks() {
+        clickBottom("工作台")
+        composeRule.onNodeWithTag("workspaceInput").performTextInput("待编辑提示词")
+        composeRule.onNodeWithTag("workspaceGenerate").performClick()
+        composeRule.waitForIdle()
+        pasteAndConfirm("原始输出内容")
+        clickBottom("首页")
+        composeRule.onNodeWithText("历史记录").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("原始输出内容").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("原始输出内容").assertExists()
     }
 }

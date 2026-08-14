@@ -8,8 +8,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ============ 1. JVM 单元测试（无需模拟器） ============
-  unit-tests:
+  # ============ 1. 全部测试（JVM 单元测试 + Robolectric 上的 Compose UI 测试） ============
+  # 说明：Compose UI 测试在 Robolectric 上运行，无需模拟器。
+  # GitHub 托管 runner（Linux 无 KVM / macOS 无 HVF）都不支持模拟器硬件加速，
+  # 因此统一用 Robolectric 在 JVM 上执行端到端 UI 测试，稳定可靠。
+  tests:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -25,7 +28,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Run unit tests
+      - name: Run all tests
         run: gradle testDebugUnitTest --no-daemon --stacktrace
       - name: Upload unit test report
         if: always()
@@ -35,50 +38,10 @@ jobs:
           path: app/build/reports/tests/**
           if-no-files-found: ignore
 
-  # ============ 2. 仪表化（Compose UI）测试，需要模拟器 ============
-  # 使用 macOS runner：提供原生硬件加速(HVF)，模拟器可在数分钟内启动，
-  # 而 GitHub 的 Linux runner 是 VM，无 KVM，软件模拟器启动超过 10 分钟导致超时。
-  instrumented-tests:
-    runs-on: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-      - name: Pre-build androidTest APK
-        run: gradle assembleDebug assembleDebugAndroidTest --no-daemon
-      - name: Run instrumented tests on emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          # macos-latest 是 Apple Silicon (aarch64)，必须使用 arm64 系统镜像
-          arch: arm64-v8a
-          target: google_apis
-          force-avd-creation: false
-          emulator-options: -no-snapshot -noaudio -no-boot-anim -no-window
-          disable-animations: true
-          script: gradle connectedDebugAndroidTest --no-daemon --stacktrace
-      - name: Upload instrumented test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: instrumented-test-report
-          path: app/build/reports/androidTests/**
-          if-no-files-found: ignore
-
-  # ============ 3. 构建 APK（仅在测试通过后） ============
+  # ============ 2. 构建 APK（仅在测试通过后） ============
   build-apk:
     runs-on: ubuntu-latest
-    needs: [unit-tests, instrumented-tests]
+    needs: [tests]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

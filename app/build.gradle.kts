@@ -63,12 +63,15 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.kotlinx.serialization.json)
 
-    // 单元测试 (JVM)
+    // 单元测试 (JVM) —— 含 Robolectric 上的 Compose UI 测试
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.ui.test.junit4)
+    testImplementation(libs.androidx.ui.test.manifest)
 
-    // 仪表化 / Compose UI 测试
+    // 仪表化测试（保留，供有真实设备/模拟器环境使用）
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(libs.androidx.test.ext.junit)
