@@ -60,7 +60,8 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
-          arch: x86_64
+          # macos-latest 是 Apple Silicon (aarch64)，必须使用 arm64 系统镜像
+          arch: arm64-v8a
           target: google_apis
           force-avd-creation: false
           emulator-options: -no-snapshot -noaudio -no-boot-anim -no-window
