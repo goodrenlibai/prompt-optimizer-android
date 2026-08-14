@@ -82,10 +82,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         workspaceSentPrompt = PromptEngine.optimizeSentPrompt(template, workspaceInput)
     }
 
-    fun setWorkspaceTemplateId(id: String) {
-        workspaceTemplateId = id
-    }
-
     fun recordWorkspaceResult() {
         val sent = workspaceSentPrompt ?: return
         if (workspaceResult.isBlank()) return

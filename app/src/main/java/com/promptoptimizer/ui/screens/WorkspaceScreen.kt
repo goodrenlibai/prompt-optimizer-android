@@ -68,7 +68,7 @@ fun WorkspaceScreen(viewModel: MainViewModel) {
                     viewModel.workspaceTemplates().forEach { t ->
                         FilterChip(
                             selected = viewModel.workspaceTemplateId == t.id,
-                            onClick = { viewModel.setWorkspaceTemplateId(t.id) },
+                            onClick = { viewModel.workspaceTemplateId = t.id },
                             label = { Text(t.name) }
                         )
                     }
