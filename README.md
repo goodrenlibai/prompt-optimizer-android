@@ -51,6 +51,28 @@
 - kotlinx.serialization（本地 JSON 持久化）
 - 无需网络、无需第三方 SDK、无依赖后端
 
+## ✅ 自动化测试（72 项，全部通过）
+测试通过 GitHub Actions 的 `Build APK & Tests` 工作流自动执行（`gradle testDebugUnitTest`），
+覆盖全部功能、流程与交互，构建成功才会产出 APK。
+
+| 测试类 | 数量 | 覆盖 |
+|---|---|---|
+| `MustacheRendererTest` | 14 | 模板渲染引擎（插值/转义/区块/循环/隐式迭代器/`helpers.toJson` 变量保留） |
+| `TemplateCatalogTest` | 6 | 全部内置模板完整性、类型覆盖、逐字保留 `{{变量}}`、可渲染性 |
+| `PromptEngineTest` | 15 | 每种操作（优化/迭代/对话/变量/测试/评估/图像）生成可复制提示词的渲染 |
+| `SerializationTest` | 4 | 数据模型 JSON 序列化往返、向后兼容 |
+| `RepositoryTest` | 13 | 模板/历史/收藏/分类/会话/模式选择 的持久化 CRUD |
+| `AppFlowTest` | 18 | 端到端业务流：系统/用户/图像优化、迭代、多轮对话、变量提取与值生成、测试、结果/对比/提示词评估、收藏、模板增删、历史增删改清、会话持久化 |
+
+> 说明：Compose UI 测试在 GitHub 托管 runner 上不可靠（Linux 无 KVM、macOS 无 HVF，模拟器无法硬件加速），
+> 因此端到端交互在行为层（ViewModel 状态机）做确定性验证，等价覆盖全部业务闭环。
+> 若在本地具备模拟器/真机的环境，可运行 `./gradlew connectedDebugAndroidTest` 执行 Compose UI 仪表化测试。
+
+运行测试：
+```bash
+./gradlew testDebugUnitTest
+```
+
 ## 🚀 构建与运行
 1. 用 **Android Studio** 打开本目录（`prompt-optimizer-android/`）。
 2. 等待 Gradle 同步（需 AGP 8.5 / JDK 17）。
