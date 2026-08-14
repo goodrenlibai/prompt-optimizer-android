@@ -36,8 +36,10 @@ jobs:
           if-no-files-found: ignore
 
   # ============ 2. 仪表化（Compose UI）测试，需要模拟器 ============
+  # 使用 macOS runner：提供原生硬件加速(HVF)，模拟器可在数分钟内启动，
+  # 而 GitHub 的 Linux runner 是 VM，无 KVM，软件模拟器启动超过 10 分钟导致超时。
   instrumented-tests:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,11 +59,11 @@ jobs:
       - name: Run instrumented tests on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 30
           arch: x86_64
           target: google_apis
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-options: -no-snapshot -noaudio -no-boot-anim -no-window
           disable-animations: true
           script: gradle connectedDebugAndroidTest --no-daemon --stacktrace
       - name: Upload instrumented test report
