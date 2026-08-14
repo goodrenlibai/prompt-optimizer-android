@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.promptoptimizer.ui.components.CopyablePromptDialog
 import com.promptoptimizer.ui.viewmodel.MainViewModel
@@ -60,17 +61,21 @@ private fun TestTab(viewModel: MainViewModel) {
         onValueChange = { viewModel.testSystemPrompt = it },
         modifier = Modifier
             .fillMaxWidth()
-            .height(160.dp),
+            .height(160.dp)
+            .testTag("testSystemPrompt"),
         label = { Text("系统提示词（待测试的优化结果）") }
     )
     OutlinedTextField(
         value = viewModel.testUserInput,
         onValueChange = { viewModel.testUserInput = it },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("testUserInput"),
         label = { Text("用户输入 / 测试用例") }
     )
     Button(onClick = { viewModel.generateTestPrompt() },
-        enabled = viewModel.testSystemPrompt.isNotBlank()) {
+        enabled = viewModel.testSystemPrompt.isNotBlank(),
+        modifier = Modifier.testTag("testGenerate")) {
         Text("生成测试提示词")
     }
 
@@ -108,13 +113,16 @@ private fun EvalTab(viewModel: MainViewModel, type: String) {
             onValueChange = { viewModel.testSystemPrompt = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(120.dp),
+                .height(120.dp)
+                .testTag("testSystemPrompt"),
             label = { Text("原始提示词") }
         )
         OutlinedTextField(
             value = viewModel.workspaceResult,
             onValueChange = { viewModel.workspaceResult = it },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("workspaceResult"),
             label = { Text("优化后提示词") }
         )
     } else if (type == "result") {
@@ -123,7 +131,8 @@ private fun EvalTab(viewModel: MainViewModel, type: String) {
             onValueChange = { viewModel.testSystemPrompt = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(120.dp),
+                .height(120.dp)
+                .testTag("testSystemPrompt"),
             label = { Text("被评估的提示词") }
         )
     } else {
@@ -132,7 +141,8 @@ private fun EvalTab(viewModel: MainViewModel, type: String) {
             onValueChange = { viewModel.testSystemPrompt = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(120.dp),
+                .height(120.dp)
+                .testTag("testSystemPrompt"),
             label = { Text("被分析的提示词") }
         )
     }
@@ -140,7 +150,9 @@ private fun EvalTab(viewModel: MainViewModel, type: String) {
     OutlinedTextField(
         value = viewModel.testUserInput,
         onValueChange = { viewModel.testUserInput = it },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("testUserInput"),
         label = { Text("测试用例输入（可留空）") }
     )
 
@@ -150,12 +162,14 @@ private fun EvalTab(viewModel: MainViewModel, type: String) {
             onValueChange = { viewModel.testResult = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(120.dp),
+                .height(120.dp)
+                .testTag("testResult"),
             label = { Text("测试输出结果") }
         )
     }
 
-    Button(onClick = { viewModel.generateEvalPrompt(type) }) {
+    Button(onClick = { viewModel.generateEvalPrompt(type) },
+        modifier = Modifier.testTag("evalGenerate")) {
         Text("生成" + title + "提示词")
     }
 

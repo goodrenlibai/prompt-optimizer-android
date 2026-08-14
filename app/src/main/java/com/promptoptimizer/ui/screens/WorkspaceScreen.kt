@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.promptoptimizer.ui.components.CopyablePromptDialog
 import com.promptoptimizer.ui.viewmodel.MainViewModel
@@ -82,14 +83,17 @@ fun WorkspaceScreen(viewModel: MainViewModel) {
             onValueChange = { viewModel.workspaceInput = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(180.dp),
+                .height(180.dp)
+                .testTag("workspaceInput"),
             label = { Text("原始提示词") },
             placeholder = { Text("输入你想优化的提示词…") }
         )
 
         Button(
             onClick = { viewModel.generateWorkspacePrompt() },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("workspaceGenerate"),
             enabled = viewModel.workspaceInput.isNotBlank()
         ) {
             Text("生成提示词（复制后发给 AI）")
@@ -122,12 +126,15 @@ fun WorkspaceScreen(viewModel: MainViewModel) {
             OutlinedTextField(
                 value = viewModel.iterateInput,
                 onValueChange = { viewModel.iterateInput = it },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("iterateInput"),
                 label = { Text("迭代需求") },
                 placeholder = { Text("例如：更专业一些 / 输出 JSON 格式…") }
             )
             Button(onClick = { viewModel.generateIteratePrompt() },
-                enabled = viewModel.iterateInput.isNotBlank()) {
+                enabled = viewModel.iterateInput.isNotBlank(),
+                modifier = Modifier.testTag("iterateGenerate")) {
                 Text("生成迭代提示词")
             }
 

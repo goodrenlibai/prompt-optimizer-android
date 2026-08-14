@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 
@@ -85,7 +86,7 @@ fun CopyablePromptDialog(
                     Button(onClick = {
                         clipboard.setText(AnnotatedString(sentPrompt))
                         Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
-                    }) {
+                    }, modifier = Modifier.testTag("copyButton")) {
                         Text("复制提示词")
                     }
                     if (extraActions != null) extraActions()
@@ -98,7 +99,8 @@ fun CopyablePromptDialog(
                     onValueChange = { pastedOutput = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 160.dp),
+                        .heightIn(max = 160.dp)
+                        .testTag("pastedOutput"),
                     placeholder = { Text("AI 的回复结果…") }
                 )
             }
@@ -106,7 +108,8 @@ fun CopyablePromptDialog(
         confirmButton = {
             Button(
                 onClick = { onConfirm(pastedOutput) },
-                enabled = pastedOutput.isNotBlank()
+                enabled = pastedOutput.isNotBlank(),
+                modifier = Modifier.testTag("confirmButton")
             ) {
                 Text("确认保存结果")
             }

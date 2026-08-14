@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.promptoptimizer.model.FavoriteItem
 import com.promptoptimizer.ui.viewmodel.MainViewModel
@@ -50,11 +51,15 @@ fun FavoritesScreen(viewModel: MainViewModel) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("保存新的提示词资产", style = MaterialTheme.typography.titleSmall)
                     OutlinedTextField(value = name, onValueChange = { name = it },
-                        modifier = Modifier.fillMaxWidth(), label = { Text("名称") })
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("favName"),
+                        label = { Text("名称") })
                     OutlinedTextField(value = content, onValueChange = { content = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(140.dp),
+                            .height(140.dp)
+                            .testTag("favContent"),
                         label = { Text("内容（提示词）") },
                         placeholder = { Text("可先在工作台优化后复制到这里") })
                     Button(onClick = {
@@ -65,7 +70,7 @@ fun FavoritesScreen(viewModel: MainViewModel) {
                             name = ""; content = ""
                             Toast.makeText(context, "已收藏", Toast.LENGTH_SHORT).show()
                         }
-                    }) { Text("保存收藏") }
+                    }, modifier = Modifier.testTag("favSave")) { Text("保存收藏") }
                 }
             }
         }
@@ -79,7 +84,8 @@ fun FavoritesScreen(viewModel: MainViewModel) {
                     Column(Modifier.padding(12.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text(fav.name, style = MaterialTheme.typography.titleSmall)
-                            IconButton(onClick = { viewModel.repo.deleteFavorite(fav.id) }) {
+                            IconButton(onClick = { viewModel.repo.deleteFavorite(fav.id) },
+                                modifier = Modifier.testTag("favDelete")) {
                                 androidx.compose.material3.Icon(Icons.Filled.Delete, contentDescription = "删除")
                             }
                         }

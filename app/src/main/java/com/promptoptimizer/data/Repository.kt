@@ -43,6 +43,13 @@ class Repository(private val context: Context) {
         persist()
     }
 
+    /** 仅供测试使用：清空本地持久化数据并重新初始化，保证每个测试相互独立。 */
+    fun resetForTest() {
+        if (dataFile.exists()) dataFile.delete()
+        data = AppData()
+        init()
+    }
+
     private fun load(): AppData? {
         return try {
             if (!dataFile.exists()) return null

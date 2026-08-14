@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.promptoptimizer.model.Template
@@ -107,11 +108,15 @@ private fun NewTemplateCard(viewModel: MainViewModel) {
                 }
             }
             OutlinedTextField(value = name, onValueChange = { name = it },
-                modifier = Modifier.fillMaxWidth(), label = { Text("名称") })
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("tplName"),
+                label = { Text("名称") })
             OutlinedTextField(value = content, onValueChange = { content = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp),
+                    .height(140.dp)
+                    .testTag("tplContent"),
                 label = { Text("模板内容") },
                 placeholder = { Text("简单模板：系统指令 + 换行 + 用户原始提示词\n数组模板请使用 {{originalPrompt}} 等 Mustache 语法") })
             Button(onClick = {
@@ -124,7 +129,7 @@ private fun NewTemplateCard(viewModel: MainViewModel) {
                 )
                 name = ""; content = ""
                 Toast.makeText(context, "已保存自定义模板", Toast.LENGTH_SHORT).show()
-            }) { Text("保存模板") }
+            }, modifier = Modifier.testTag("tplSave")) { Text("保存模板") }
         }
     }
 }
@@ -138,7 +143,7 @@ private fun TemplateRow(template: Template, onCopy: () -> Unit, onDelete: () -> 
                 if (template.isBuiltin) {
                     Text("内置", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                 } else {
-                    IconButton(onClick = onDelete) {
+                    IconButton(onClick = onDelete, modifier = Modifier.testTag("tplDelete")) {
                         androidx.compose.material3.Icon(Icons.Filled.Delete, contentDescription = "删除")
                     }
                 }

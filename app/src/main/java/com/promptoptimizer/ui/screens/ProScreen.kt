@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.promptoptimizer.model.Role
 import com.promptoptimizer.ui.components.CopyablePromptDialog
@@ -90,7 +91,9 @@ private fun ConversationTab(viewModel: MainViewModel) {
                     OutlinedTextField(
                         value = msg.content,
                         onValueChange = { viewModel.updateConversationMessage(msg.id, it) },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("msgContent"),
                         placeholder = { Text("消息内容…") }
                     )
                 }
@@ -133,13 +136,15 @@ private fun VariableTab(viewModel: MainViewModel) {
             onValueChange = { viewModel.variablePrompt = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(140.dp),
+                .height(140.dp)
+                .testTag("variablePrompt"),
             label = { Text("提示词（含可参数化内容）") }
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { viewModel.generateVariableExtractionPrompt() },
-                enabled = viewModel.variablePrompt.isNotBlank()) {
+                enabled = viewModel.variablePrompt.isNotBlank(),
+                modifier = Modifier.testTag("variableExtract")) {
                 Text("① 提取变量")
             }
         }
@@ -165,7 +170,8 @@ private fun VariableTab(viewModel: MainViewModel) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary)
 
-            Button(onClick = { viewModel.generateVariableValuePrompt() }) {
+            Button(onClick = { viewModel.generateVariableValuePrompt() },
+                modifier = Modifier.testTag("variableValue")) {
                 Text("② 生成变量示例值")
             }
         }
