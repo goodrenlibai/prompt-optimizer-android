@@ -136,8 +136,8 @@ data class AppData(
     val favorites: MutableList<FavoriteItem> = mutableListOf(),
     val categories: MutableList<Category> = mutableListOf(),
     val sessions: MutableList<SessionState> = mutableListOf(),
-    val selectedMode: String = "basic",
-    val selectedSubMode: String = "system"
+    var selectedMode: String = "basic",
+    var selectedSubMode: String = "system"
 )
 
 object Json {

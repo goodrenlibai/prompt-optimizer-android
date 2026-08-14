@@ -131,7 +131,7 @@ private fun NewTemplateCard(viewModel: MainViewModel) {
 
 @Composable
 private fun TemplateRow(template: Template, onCopy: () -> Unit, onDelete: () -> Unit) {
-    Card(Modifier.fillMaxWidth(), onClick = onCopy) {
+    Card(onClick = onCopy, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(template.name, style = MaterialTheme.typography.titleSmall)
