@@ -7,23 +7,27 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import com.promptoptimizer.PromptOptimizerApp
 import com.promptoptimizer.core.PromptEngine
+import com.promptoptimizer.core.SearchEngine
 import com.promptoptimizer.data.Repository
+import com.promptoptimizer.model.FavoriteItem
+import com.promptoptimizer.model.PromptRecord
 import com.promptoptimizer.model.Role
 import com.promptoptimizer.model.SessionState
 import com.promptoptimizer.model.Template
 import com.promptoptimizer.model.TemplateType
 
 /**
- * 单一 ViewModel：持有仓库，并管理各工作区（优化/迭代/对话/变量/测试/评估）的状态。
- *
- * 人工发送模式的统一流程：
- *  1. 用户点击按钮 → [xxxSentPrompt] 生成待复制的提示词文本（存于 [sentPrompt]）
- *  2. UI 弹出对话框，用户复制后发给任意在线免费 AI
- *  3. 用户把 AI 回复粘贴进对话框 → [recordXxxResult] 保存结果与历史
+ * 统一 ViewModel：持有全局数据仓库、搜索与提示词引擎，并管理各工作区状态。
  */
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val repo: Repository = (app as PromptOptimizerApp).repository
+
+    // ===== 搜索状态 =====
+    var templateSearchQuery by mutableStateOf("")
+    var historySearchQuery by mutableStateOf("")
+    var favoritesSearchQuery by mutableStateOf("")
+    var favoritesSelectedCategory by mutableStateOf<String?>(null)
 
     // ===== 工作台（基础系统/用户 + 图像）=====
     var workspaceInput by mutableStateOf("")
@@ -58,11 +62,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var testResult by mutableStateOf("")
     var evalSentPrompt by mutableStateOf<String?>(null)
     var evalResult by mutableStateOf("")
+    var parsedEvalReport by mutableStateOf<PromptEngine.ParsedEvaluation?>(null)
+
+    // ===== 搜索与过滤列表 =====
+
+    fun searchTemplates(query: String = templateSearchQuery, type: TemplateType? = null): List<Template> {
+        return SearchEngine.searchTemplates(query, repo.getTemplates(), type)
+    }
+
+    fun searchHistory(query: String = historySearchQuery, op: String? = null): List<PromptRecord> {
+        return SearchEngine.searchHistory(query, repo.getHistory(), op)
+    }
+
+    fun searchFavorites(query: String = favoritesSearchQuery, category: String? = favoritesSelectedCategory): List<FavoriteItem> {
+        return SearchEngine.searchFavorites(query, repo.getFavorites(), category)
+    }
 
     fun template(): Template? = repo.getTemplate(workspaceTemplateId)
-    fun templateFor(type: TemplateType): Template? =
-        repo.getTemplates(type).firstOrNull { it.isBuiltin }
-            ?: repo.getTemplates(type).firstOrNull()
 
     fun workspaceTemplates(): List<Template> {
         val type = when (workspaceMode) {
@@ -95,7 +111,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             templateName = template()?.name ?: ""
         )
         workspaceSentPrompt = null
-        workspaceResult = ""
     }
 
     private fun workspaceModeLabel(): String = when (workspaceMode) {
@@ -122,7 +137,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         iterateSentPrompt = null
         iterateResult = ""
         iterateInput = ""
-        // 迭代结果回填到工作区（需在清空 iterateResult 前保存）
+        // 迭代结果回填到工作区
         workspaceResult = result
     }
 
@@ -163,11 +178,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun applyExtractionNamesFromResult() {
-        // 简单解析：若用户粘贴的回复中包含 JSON "name" 字段，尝试提取变量名。
-        val names = Regex("\"name\"\\s*:\\s*\"([^\"]+)\"").findAll(variableResult)
-            .mapNotNull { it.groupValues.getOrNull(1)?.takeIf { n -> n.isNotBlank() } }
-            .toList()
-        if (names.isNotEmpty()) variableList = names.distinct()
+        // 使用 PromptEngine 的结构化解析器智能提取变量
+        val extracted = PromptEngine.parseExtractedVariables(variableResult)
+        if (extracted.isNotEmpty()) {
+            variableList = extracted.map { it.name }.distinct()
+            val initialValues = extracted.filter { it.value.isNotBlank() }.associate { it.name to it.value }
+            if (initialValues.isNotEmpty()) {
+                variableValues = variableValues + initialValues
+            }
+        }
     }
 
     fun generateVariableValuePrompt() {
@@ -181,6 +200,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun recordVariableResult() {
         val sent = variableSentPrompt ?: return
         if (variableResult.isBlank()) return
+        // 自动解析示例值
+        val parsedValues = PromptEngine.parseVariableValues(variableResult)
+        if (parsedValues.isNotEmpty()) {
+            variableValues = variableValues + parsedValues
+        }
         repo.addRecord("variable", variablePrompt, sent, variableResult, "专业-变量", "variable-extraction", "变量")
         variableSentPrompt = null
         variableResult = ""
@@ -198,7 +222,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (testResult.isBlank()) return
         repo.addRecord("test", testUserInput, sent, testResult, "测试", "test", "测试提示词")
         testSentPrompt = null
-        testResult = ""
     }
 
     fun generateEvalPrompt(type: String) {
@@ -219,9 +242,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun recordEvalResult() {
         val sent = evalSentPrompt ?: return
         if (evalResult.isBlank()) return
+        parsedEvalReport = PromptEngine.parseEvaluationReport(evalResult)
         repo.addRecord("evaluate", testSystemPrompt, sent, evalResult, "测试评估", "evaluation", "评估")
         evalSentPrompt = null
-        evalResult = ""
     }
 
     // ===== 会话持久化（切换工作区时保存当前输入）=====

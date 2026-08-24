@@ -1,8 +1,8 @@
 package com.promptoptimizer.ui.nav
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Star
@@ -49,7 +49,7 @@ fun NavGraph(viewModel: MainViewModel) {
     val bottomItems = listOf(
         BottomItem(Routes.HOME, "首页", Icons.Filled.Home),
         BottomItem(Routes.WORKSPACE, "工作台", Icons.Filled.Edit),
-        BottomItem(Routes.PRO, "专业", Icons.Filled.Chat),
+        BottomItem(Routes.PRO, "专业", Icons.AutoMirrored.Filled.Chat),
         BottomItem(Routes.TESTEVAL, "测试评估", Icons.Filled.Assessment),
         BottomItem(Routes.FAVORITES, "收藏", Icons.Filled.Star)
     )

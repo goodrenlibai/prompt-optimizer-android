@@ -4,17 +4,54 @@ import com.promptoptimizer.model.ChatMessage
 import com.promptoptimizer.model.Role
 import com.promptoptimizer.model.Template
 import com.promptoptimizer.template.MustacheRenderer
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * 提示词引擎 —— 人工发送模式的核心。
+ * 提示词与智能解析引擎 —— 人工发送模式的核心中枢。
  *
- * 原项目里，模板 + 用户输入会调用 LLM 直接得到结果；这里我们把"调用 LLM"替换为
- * "渲染出一段可复制的提示词文本"（[sentPrompt]），由用户复制后发给任意在线免费 AI。
- * 用户把 AI 的回复粘贴回来，作为该操作的结果（优化结果 / 测试结果 / 评估结果等）。
+ * 职责：
+ * 1. **提示词渲染（Prompt Rendering）**：基于 [MustacheRenderer] 将各模式模板与上下文精确拼接为待复制的结构化提示词；
+ * 2. **AI 回复智能解析（AI Response Parser）**：当用户把 AI 回复粘贴回应用后，自动容错提取 JSON、Markdown 代码块、变量列表、变量值以及评估维度打分。
  */
 object PromptEngine {
 
     private val renderer: MustacheRenderer get() = MustacheRenderer.default()
+
+    private val lenientJson = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
+    }
+
+    // ===== 结构化解析数据模型 =====
+
+    @Serializable
+    data class ExtractedVariable(
+        val name: String = "",
+        val value: String = "",
+        val reason: String = "",
+        val category: String = ""
+    )
+
+    @Serializable
+    data class EvaluationDimension(
+        val key: String = "",
+        val label: String = "",
+        val score: Double = 0.0
+    )
+
+    @Serializable
+    data class ParsedEvaluation(
+        val overallScore: Double = 0.0,
+        val dimensions: List<EvaluationDimension> = emptyList(),
+        val improvements: List<String> = emptyList(),
+        val summary: String = ""
+    )
 
     // ===== 通用渲染 =====
 
@@ -32,7 +69,8 @@ object PromptEngine {
                 renderer.render(content, context)
             } else {
                 val userPrompt = context["originalPrompt"] as? String ?: originalPrompt
-                content.trimEnd() + "\n\n" + userPrompt.trim()
+                val trimmed = content.trimEnd()
+                if (userPrompt.isBlank()) trimmed else "$trimmed\n\n${userPrompt.trim()}"
             }
         }
         return renderMessages(template.messages, context)
@@ -57,7 +95,7 @@ object PromptEngine {
         return entries.filter { it.second != null }.toMap()
     }
 
-    // ===== 各操作 =====
+    // ===== 各优化操作生成 =====
 
     /** 优化（系统 / 用户提示词 / 图像）。 */
     fun optimizeSentPrompt(template: Template, originalPrompt: String): String {
@@ -182,6 +220,208 @@ object PromptEngine {
     fun evalPromptOnlySentPrompt(template: Template, workspacePrompt: String): String {
         val ctx = buildContext("workspacePrompt" to workspacePrompt)
         return renderSentPrompt(template, ctx, workspacePrompt)
+    }
+
+    // ===== 智能 AI 回复解析（AI Response Parser） =====
+
+    /** 从文本中智能提取最外层有效 JSON 子串（支持过滤 Markdown ```json 代码块及前后引导语）。 */
+    fun extractJsonString(rawText: String): String? {
+        val trimmed = rawText.trim()
+        // 1. 优先提取 ```json ... ``` 或 ``` ... ``` 代码块
+        val codeBlockRegex = Regex("```(?:json)?\\s*([\\s\\S]*?)\\s*```", RegexOption.IGNORE_CASE)
+        val match = codeBlockRegex.find(trimmed)
+        if (match != null) {
+            val inner = match.groupValues[1].trim()
+            if ((inner.startsWith("{") && inner.endsWith("}")) || (inner.startsWith("[") && inner.endsWith("]"))) {
+                return inner
+            }
+        }
+
+        // 2. 查找首个 '{' 或 '[' 到对应最外层闭合字符
+        val firstObj = trimmed.indexOf('{')
+        val firstArr = trimmed.indexOf('[')
+        val startIdx = when {
+            firstObj != -1 && firstArr != -1 -> minOf(firstObj, firstArr)
+            firstObj != -1 -> firstObj
+            firstArr != -1 -> firstArr
+            else -> -1
+        }
+        if (startIdx == -1) return null
+
+        val isObject = trimmed[startIdx] == '{'
+        val openChar = if (isObject) '{' else '['
+        val closeChar = if (isObject) '}' else ']'
+
+        var depth = 0
+        var inString = false
+        var escape = false
+
+        for (i in startIdx until trimmed.length) {
+            val ch = trimmed[i]
+            if (escape) {
+                escape = false
+                continue
+            }
+            if (ch == '\\') {
+                if (inString) escape = true
+                continue
+            }
+            if (ch == '"') {
+                inString = !inString
+                continue
+            }
+            if (!inString) {
+                if (ch == openChar) {
+                    depth++
+                } else if (ch == closeChar) {
+                    depth--
+                    if (depth == 0) {
+                        return trimmed.substring(startIdx, i + 1)
+                    }
+                }
+            }
+        }
+
+        return null
+    }
+
+    /** 智能解析变量提取回复（支持 JSON、Markdown 列表与正则 fallback）。 */
+    fun parseExtractedVariables(text: String): List<ExtractedVariable> {
+        val result = mutableListOf<ExtractedVariable>()
+        val jsonStr = extractJsonString(text)
+
+        if (jsonStr != null) {
+            try {
+                val element = lenientJson.parseToJsonElement(jsonStr)
+                if (element is JsonObject) {
+                    val variablesArray = element["variables"]?.let { if (it is kotlinx.serialization.json.JsonArray) it else null }
+                    if (variablesArray != null) {
+                        for (item in variablesArray) {
+                            if (item is JsonObject) {
+                                val name = item["name"]?.jsonPrimitive?.content ?: ""
+                                val value = item["value"]?.jsonPrimitive?.content ?: ""
+                                val reason = item["reason"]?.jsonPrimitive?.content ?: ""
+                                val category = item["category"]?.jsonPrimitive?.content ?: ""
+                                if (name.isNotBlank()) {
+                                    result.add(ExtractedVariable(name, value, reason, category))
+                                }
+                            }
+                        }
+                    }
+                } else if (element is kotlinx.serialization.json.JsonArray) {
+                    for (item in element) {
+                        if (item is JsonObject) {
+                            val name = item["name"]?.jsonPrimitive?.content ?: ""
+                            val value = item["value"]?.jsonPrimitive?.content ?: ""
+                            if (name.isNotBlank()) {
+                                result.add(ExtractedVariable(name, value))
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                // JSON 解析容错降级
+            }
+        }
+
+        if (result.isEmpty()) {
+            // 正则双重容错：匹配 "name": "xxx" 或 {{xxx}} 或列表
+            val nameRegex = Regex("\"name\"\\s*:\\s*\"([^\"]+)\"")
+            nameRegex.findAll(text).forEach { m ->
+                val name = m.groupValues[1].trim()
+                if (name.isNotBlank() && result.none { it.name == name }) {
+                    result.add(ExtractedVariable(name = name))
+                }
+            }
+        }
+
+        if (result.isEmpty()) {
+            val bracketRegex = Regex("\\{\\{([^{}]+)\\}\\}")
+            bracketRegex.findAll(text).forEach { m ->
+                val name = m.groupValues[1].trim()
+                if (name.isNotBlank() && result.none { it.name == name }) {
+                    result.add(ExtractedVariable(name = name))
+                }
+            }
+        }
+
+        return result
+    }
+
+    /** 智能解析变量值生成回复。 */
+    fun parseVariableValues(text: String): Map<String, String> {
+        val result = mutableMapOf<String, String>()
+        val jsonStr = extractJsonString(text)
+
+        if (jsonStr != null) {
+            try {
+                val element = lenientJson.parseToJsonElement(jsonStr)
+                if (element is JsonObject) {
+                    val valuesArray = element["values"]?.let { if (it is kotlinx.serialization.json.JsonArray) it else null }
+                    if (valuesArray != null) {
+                        for (item in valuesArray) {
+                            if (item is JsonObject) {
+                                val name = item["name"]?.jsonPrimitive?.content ?: ""
+                                val value = item["value"]?.jsonPrimitive?.content ?: ""
+                                if (name.isNotBlank()) {
+                                    result[name] = value
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                // 忽略
+            }
+        }
+
+        if (result.isEmpty()) {
+            val regex = Regex("\"name\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"value\"\\s*:\\s*\"([^\"]+)\"")
+            regex.findAll(text).forEach { m ->
+                val name = m.groupValues[1].trim()
+                val value = m.groupValues[2].trim()
+                if (name.isNotBlank()) result[name] = value
+            }
+        }
+
+        return result
+    }
+
+    /** 智能解析评估报告。 */
+    fun parseEvaluationReport(text: String): ParsedEvaluation? {
+        val jsonStr = extractJsonString(text) ?: return null
+        return try {
+            val element = lenientJson.parseToJsonElement(jsonStr) as? JsonObject ?: return null
+            val scoreObj = element["score"] as? JsonObject
+            val overall = scoreObj?.get("overall")?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0
+
+            val dims = mutableListOf<EvaluationDimension>()
+            val dimsArr = scoreObj?.get("dimensions")?.let { if (it is kotlinx.serialization.json.JsonArray) it else null }
+            if (dimsArr != null) {
+                for (d in dimsArr) {
+                    if (d is JsonObject) {
+                        val key = d["key"]?.jsonPrimitive?.content ?: ""
+                        val label = d["label"]?.jsonPrimitive?.content ?: key
+                        val score = d["score"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0
+                        dims.add(EvaluationDimension(key, label, score))
+                    }
+                }
+            }
+
+            val improvements = mutableListOf<String>()
+            val impsArr = element["improvements"]?.let { if (it is kotlinx.serialization.json.JsonArray) it else null }
+            if (impsArr != null) {
+                for (imp in impsArr) {
+                    improvements.add(imp.jsonPrimitive.content)
+                }
+            }
+
+            val summary = element["summary"]?.jsonPrimitive?.content ?: ""
+
+            ParsedEvaluation(overall, dims, improvements, summary)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     // 辅助类型

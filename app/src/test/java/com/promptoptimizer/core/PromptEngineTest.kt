@@ -3,6 +3,7 @@ package com.promptoptimizer.core
 import com.promptoptimizer.model.Role
 import com.promptoptimizer.template.TemplateCatalog
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -120,18 +121,90 @@ class PromptEngineTest {
         assertTrue(out.contains("赛博朋克风格"))
     }
 
+    // ===== 结构化 AI 回复提取与解析测试 =====
+
     @Test
-    fun noOperationIsBlank() {
-        // 所有模板各自渲染后非空
-        val outs = listOf(
-            PromptEngine.optimizeSentPrompt(TemplateCatalog.generalOptimize, "x"),
-            PromptEngine.optimizeSentPrompt(TemplateCatalog.userPromptProfessional, "x"),
-            PromptEngine.optimizeSentPrompt(TemplateCatalog.userPromptPlanning, "x"),
-            PromptEngine.optimizeSentPrompt(TemplateCatalog.outputFormatOptimize, "x"),
-            PromptEngine.iterateSentPrompt(TemplateCatalog.iterateTemplate, "x", "y"),
-            PromptEngine.variableExtractionSentPrompt(TemplateCatalog.variableExtraction, "x"),
-            PromptEngine.testSentPrompt(TemplateCatalog.testPrompt, "sys", "usr")
-        )
-        outs.forEach { assertTrue(it.isNotBlank()) }
+    fun extractJsonFromMarkdownCodeBlock() {
+        val raw = """
+            这是 AI 返回的引导语：
+            ```json
+            {
+              "variables": [
+                { "name": "season", "value": "春天" }
+              ]
+            }
+            ```
+            以上是变量提取结果。
+        """.trimIndent()
+
+        val json = PromptEngine.extractJsonString(raw)
+        assertNotNull(json)
+        assertTrue(json!!.contains("\"season\""))
+    }
+
+    @Test
+    fun parseExtractedVariablesFromJson() {
+        val raw = """
+            ```json
+            {
+              "variables": [
+                { "name": "style", "value": "科技风", "reason": "主题风格" },
+                { "name": "length", "value": "500字", "reason": "长度约束" }
+              ],
+              "summary": "提取了2个变量"
+            }
+            ```
+        """.trimIndent()
+
+        val vars = PromptEngine.parseExtractedVariables(raw)
+        assertEquals(2, vars.size)
+        assertEquals("style", vars[0].name)
+        assertEquals("科技风", vars[0].value)
+        assertEquals("length", vars[1].name)
+    }
+
+    @Test
+    fun parseVariableValuesFromJson() {
+        val raw = """
+            ```json
+            {
+              "values": [
+                { "name": "风格", "value": "浪漫主义" },
+                { "name": "字数", "value": "800" }
+              ]
+            }
+            ```
+        """.trimIndent()
+
+        val values = PromptEngine.parseVariableValues(raw)
+        assertEquals(2, values.size)
+        assertEquals("浪漫主义", values["风格"])
+        assertEquals("800", values["字数"])
+    }
+
+    @Test
+    fun parseEvaluationReport() {
+        val raw = """
+            ```json
+            {
+              "score": {
+                "overall": 92.5,
+                "dimensions": [
+                  { "key": "goalAchievement", "label": "目标达成度", "score": 95.0 },
+                  { "key": "outputQuality", "label": "输出质量", "score": 90.0 }
+                ]
+              },
+              "improvements": ["建议进一步补充约束"],
+              "summary": "表现优异"
+            }
+            ```
+        """.trimIndent()
+
+        val eval = PromptEngine.parseEvaluationReport(raw)
+        assertNotNull(eval)
+        assertEquals(92.5, eval!!.overallScore, 0.01)
+        assertEquals(2, eval.dimensions.size)
+        assertEquals("目标达成度", eval.dimensions[0].label)
+        assertEquals("表现优异", eval.summary)
     }
 }

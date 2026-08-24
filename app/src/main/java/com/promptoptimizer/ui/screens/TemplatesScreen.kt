@@ -11,19 +11,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,28 +54,61 @@ fun TemplatesScreen(viewModel: MainViewModel) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item { Text("模板管理", style = MaterialTheme.typography.headlineSmall) }
-        item { Text("内置模板为只读；自定义模板支持编辑与删除。点击可复制模板全文。",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
+        item {
+            Text(
+                "内置模板为只读；自定义模板支持编辑与删除。点击可复制模板全文。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+        }
+
+        // 搜索栏
+        item {
+            OutlinedTextField(
+                value = viewModel.templateSearchQuery,
+                onValueChange = { viewModel.templateSearchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("templateSearchInput"),
+                placeholder = { Text("智能搜索模板（支持名称、类型、拼音如 xt）…") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "搜索") },
+                trailingIcon = {
+                    if (viewModel.templateSearchQuery.isNotEmpty()) {
+                        IconButton(onClick = { viewModel.templateSearchQuery = "" }) {
+                            Icon(Icons.Filled.Clear, contentDescription = "清空")
+                        }
+                    }
+                },
+                singleLine = true
+            )
+        }
 
         item {
             NewTemplateCard(viewModel)
         }
 
-        val groups = viewModel.repo.getTemplates().groupBy { it.type }
-        groups.keys.sortedBy { it.ordinal }.forEach { type ->
+        val searchResults = viewModel.searchTemplates()
+        if (searchResults.isEmpty()) {
             item {
-                Text(type.zhName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text("未找到匹配的模板", color = MaterialTheme.colorScheme.outline, modifier = Modifier.padding(8.dp))
             }
-            items(groups[type] ?: emptyList()) { t ->
-                TemplateRow(
-                    template = t,
-                    onCopy = {
-                        val text = t.content ?: t.messages.joinToString("\n\n") { it.content }
-                        clipboard.setText(AnnotatedString(text))
-                        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
-                    },
-                    onDelete = { viewModel.repo.deleteTemplate(t.id) }
-                )
+        } else {
+            val groups = searchResults.groupBy { it.type }
+            groups.keys.sortedBy { it.ordinal }.forEach { type ->
+                item {
+                    Text(type.zhName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                }
+                items(groups[type] ?: emptyList()) { t ->
+                    TemplateRow(
+                        template = t,
+                        onCopy = {
+                            val text = t.content ?: t.messages.joinToString("\n\n") { it.content }
+                            clipboard.setText(AnnotatedString(text))
+                            Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                        },
+                        onDelete = { viewModel.repo.deleteTemplate(t.id) }
+                    )
+                }
             }
         }
     }
@@ -93,12 +128,13 @@ private fun NewTemplateCard(viewModel: MainViewModel) {
             Text("新增自定义模板", style = MaterialTheme.typography.titleSmall)
             ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
                 OutlinedTextField(
-                    value = type.zhName, onValueChange = {},
+                    value = type.zhName,
+                    onValueChange = {},
                     readOnly = true,
                     label = { Text("模板类型") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                     modifier = Modifier
-                        .menuAnchor()
+                        .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                         .fillMaxWidth()
                 )
                 ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -107,29 +143,47 @@ private fun NewTemplateCard(viewModel: MainViewModel) {
                     }
                 }
             }
-            OutlinedTextField(value = name, onValueChange = { name = it },
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("tplName"),
-                label = { Text("名称") })
-            OutlinedTextField(value = content, onValueChange = { content = it },
+                label = { Text("名称") }
+            )
+            OutlinedTextField(
+                value = content,
+                onValueChange = { content = it },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(140.dp)
                     .testTag("tplContent"),
                 label = { Text("模板内容") },
-                placeholder = { Text("简单模板：系统指令 + 换行 + 用户原始提示词\n数组模板请使用 {{originalPrompt}} 等 Mustache 语法") })
-            Button(onClick = {
-                if (name.isBlank() || content.isBlank()) {
-                    Toast.makeText(context, "名称与内容不能为空", Toast.LENGTH_SHORT).show(); return@Button
-                }
-                viewModel.repo.saveUserTemplate(
-                    Template(id = "custom-${System.currentTimeMillis()}", name = name, type = type,
-                        content = content, isBuiltin = false)
-                )
-                name = ""; content = ""
-                Toast.makeText(context, "已保存自定义模板", Toast.LENGTH_SHORT).show()
-            }, modifier = Modifier.testTag("tplSave")) { Text("保存模板") }
+                placeholder = { Text("简单模板：系统指令 + 换行 + 用户原始提示词\n数组模板请使用 {{originalPrompt}} 等 Mustache 语法") }
+            )
+            Button(
+                onClick = {
+                    if (name.isBlank() || content.isBlank()) {
+                        Toast.makeText(context, "名称与内容不能为空", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    viewModel.repo.saveUserTemplate(
+                        Template(
+                            id = "custom-${System.currentTimeMillis()}",
+                            name = name,
+                            type = type,
+                            content = content,
+                            isBuiltin = false
+                        )
+                    )
+                    name = ""
+                    content = ""
+                    Toast.makeText(context, "已保存自定义模板", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.testTag("tplSave")
+            ) {
+                Text("保存模板")
+            }
         }
     }
 }
@@ -144,14 +198,18 @@ private fun TemplateRow(template: Template, onCopy: () -> Unit, onDelete: () -> 
                     Text("内置", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                 } else {
                     IconButton(onClick = onDelete, modifier = Modifier.testTag("tplDelete")) {
-                        androidx.compose.material3.Icon(Icons.Filled.Delete, contentDescription = "删除")
+                        Icon(Icons.Filled.Delete, contentDescription = "删除")
                     }
                 }
             }
-            if (template.description.isNotBlank())
+            if (template.description.isNotBlank()) {
                 Text(template.description, style = MaterialTheme.typography.bodySmall)
-            Text(if (template.isSimple) "简单模板" else "数组模板", style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary)
+            }
+            Text(
+                if (template.isSimple) "简单模板" else "数组模板",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

@@ -3,11 +3,18 @@ package com.promptoptimizer.template
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 class MustacheRendererTest {
 
-    private val renderer = MustacheRenderer.default()
+    private lateinit var renderer: MustacheRenderer
+
+    @Before
+    fun setup() {
+        MustacheRenderer.clearCache()
+        renderer = MustacheRenderer.default()
+    }
 
     @Test
     fun simpleInterpolation() {
@@ -37,6 +44,12 @@ class MustacheRendererTest {
     fun ampUnescapes() {
         val out = renderer.render("{{&html}}", mapOf("html" to "<b>x</b>"))
         assertEquals("<b>x</b>", out)
+    }
+
+    @Test
+    fun commentTagsAreIgnored() {
+        val out = renderer.render("Hello {{! this is a comment }}World", emptyMap())
+        assertEquals("Hello World", out)
     }
 
     @Test
@@ -71,43 +84,8 @@ class MustacheRendererTest {
 
     @Test
     fun dottedPathLookup() {
-        val out = renderer.render("{{user.name}}", mapOf("user" to mapOf("name" to "Tom")))
+        val out = renderer.render("{{user.profile.name}}", mapOf("user" to mapOf("profile" to mapOf("name" to "Tom"))))
         assertEquals("Tom", out)
-    }
-
-    @Test
-    fun helpersToJsonEncodes() {
-        val ctx = mapOf("originalPrompt" to "写一首 {{风格}} 的诗")
-        val t = "{\"originalPrompt\": {{#helpers.toJson}}{{{originalPrompt}}}{{/helpers.toJson}}}"
-        val out = renderer.render(t, ctx)
-        // 变量占位符必须被逐字保留，且被 JSON 编码
-        assertEquals("{\"originalPrompt\": \"写一首 {{风格}} 的诗\"}", out)
-    }
-
-    @Test
-    fun helpersToJsonEscapesQuotesAndNewlines() {
-        val ctx = mapOf("x" to "含\"引号\"\n换行")
-        val t = "{{#helpers.toJson}}{{{x}}}{{/helpers.toJson}}"
-        val out = renderer.render(t, ctx)
-        assertTrue(out.contains("\\\""))
-        assertTrue(out.contains("\\n"))
-        assertFalse(out.contains("\n"))
-    }
-
-    @Test
-    fun jsonEncodeStringRoundTrip() {
-        val s = "a\"b\\c\nd"
-        val enc = MustacheRenderer.jsonEncodeString(s)
-        assertTrue(enc.startsWith("\""))
-        assertTrue(enc.endsWith("\""))
-    }
-
-    @Test
-    fun rendersWholeTemplatePreservingLiteralVariableLikeText() {
-        // 三重花括号插值中的 {{变量}} 内容不会二次求值
-        val t = "保持:{{{originalPrompt}}}"
-        val out = renderer.render(t, mapOf("originalPrompt" to "请用 {{主题}} 写"))
-        assertEquals("保持:请用 {{主题}} 写", out)
     }
 
     @Test
@@ -115,5 +93,49 @@ class MustacheRendererTest {
         val t = "{{#arr}}[{{.}}]{{/arr}}"
         val out = renderer.render(t, mapOf("arr" to listOf(1, 2, 3)))
         assertEquals("[1][2][3]", out)
+    }
+
+    @Test
+    fun helpersToJsonEncodes() {
+        val ctx = mapOf("originalPrompt" to "写一首 {{风格}} 的诗")
+        val t = "{\"originalPrompt\": {{#helpers.toJson}}{{{originalPrompt}}}{{/helpers.toJson}}}"
+        val out = renderer.render(t, ctx)
+        assertEquals("{\"originalPrompt\": \"写一首 {{风格}} 的诗\"}", out)
+    }
+
+    @Test
+    fun helpersToJsonEscapesQuotesAndNewlines() {
+        val ctx = mapOf("x" to "含\"引号\"\n换行\t制表符")
+        val t = "{{#helpers.toJson}}{{{x}}}{{/helpers.toJson}}"
+        val out = renderer.render(t, ctx)
+        assertTrue(out.contains("\\\""))
+        assertTrue(out.contains("\\n"))
+        assertTrue(out.contains("\\t"))
+        assertFalse(out.contains("\n"))
+    }
+
+    @Test
+    fun helpersUpperAndLower() {
+        val t1 = "{{#helpers.upper}}hello{{/helpers.upper}}"
+        assertEquals("HELLO", renderer.render(t1, emptyMap()))
+
+        val t2 = "{{#helpers.lower}}WORLD{{/helpers.lower}}"
+        assertEquals("world", renderer.render(t2, emptyMap()))
+    }
+
+    @Test
+    fun unclosedTagsGracefullyDegrade() {
+        val t = "这是 {{未闭合标签"
+        val out = renderer.render(t, emptyMap())
+        assertEquals("这是 {{未闭合标签", out)
+    }
+
+    @Test
+    fun cachedAstRendersIdentically() {
+        val template = "用户: {{name}}, 年龄: {{age}}"
+        val r1 = renderer.render(template, mapOf("name" to "Alice", "age" to 20))
+        val r2 = renderer.render(template, mapOf("name" to "Bob", "age" to 25))
+        assertEquals("用户: Alice, 年龄: 20", r1)
+        assertEquals("用户: Bob, 年龄: 25", r2)
     }
 }

@@ -17,11 +17,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * 端到端流程测试：直接驱动 MainViewModel + Repository，覆盖每一条业务流。
- *
- * 说明：Compose UI 测试在无模拟器的 CI（Robolectric）上对 AlertDialog / 跨屏导航
- * 不稳定，因此这里改为在行为层（ViewModel 状态机）对全部功能与流程做确定性验证，
- * 等价覆盖每个"生成可复制提示词 → 粘贴 AI 回复 → 保存结果"的业务闭环。
+ * 端到端业务流程与状态机测试。
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -113,7 +109,6 @@ class AppFlowTest {
         vm.recordIterateResult()
         val h = vm.repo.getHistory()
         assertTrue(h.any { it.operation == "iterate" })
-        // 迭代结果回填到工作区
         assertEquals("你是一位资深写作顾问", vm.workspaceResult)
     }
 
@@ -141,8 +136,12 @@ class AppFlowTest {
         assertNotNull(vm.variableSentPrompt)
         assertTrue(vm.variableSentPrompt!!.contains("{{主题}}"))
 
-        // 模拟 AI 返回变量名并解析
-        vm.variableResult = """{"variables":[{"name":"主题","value":"科技"},{"name":"字数","value":"1000"}]}"""
+        // 模拟 AI 返回变量名并智能解析
+        vm.variableResult = """
+            ```json
+            {"variables":[{"name":"主题","value":"科技"},{"name":"字数","value":"1000"}]}
+            ```
+        """.trimIndent()
         vm.applyExtractionNamesFromResult()
         assertEquals(listOf("主题", "字数"), vm.variableList)
 
@@ -154,6 +153,7 @@ class AppFlowTest {
         vm.variableResult = """{"values":[{"name":"主题","value":"AI"}]}"""
         vm.recordVariableResult()
         assertTrue(vm.repo.getHistory().any { it.operation == "variable" })
+        assertEquals("AI", vm.variableValues["主题"])
     }
 
     // ===== 测试 / 评估 =====
@@ -179,9 +179,15 @@ class AppFlowTest {
         vm.generateEvalPrompt("result")
         assertNotNull(vm.evalSentPrompt)
         assertTrue(vm.evalSentPrompt!!.contains("目标达成度"))
-        vm.evalResult = """{"score":{"overall":90}}"""
+        vm.evalResult = """
+            ```json
+            {"score":{"overall":90}}
+            ```
+        """.trimIndent()
         vm.recordEvalResult()
         assertTrue(vm.repo.getHistory().any { it.operation == "evaluate" })
+        assertNotNull(vm.parsedEvalReport)
+        assertEquals(90.0, vm.parsedEvalReport!!.overallScore, 0.1)
     }
 
     @Test
@@ -212,25 +218,35 @@ class AppFlowTest {
 
     @Test
     fun favoritesFlow() {
-        vm.repo.saveFavorite(FavoriteItem(name = "我的收藏", content = "你是一位专家"))
+        vm.repo.saveFavorite(FavoriteItem(name = "我的收藏", content = "你是一位专家", category = "日常"))
         assertEquals(1, vm.repo.getFavorites().size)
         assertEquals("我的收藏", vm.repo.getFavorites()[0].name)
+
+        // 搜索收藏
+        val search = vm.searchFavorites("专家")
+        assertEquals(1, search.size)
 
         val id = vm.repo.getFavorites()[0].id
         vm.repo.deleteFavorite(id)
         assertTrue(vm.repo.getFavorites().isEmpty())
     }
 
-    // ===== 模板管理 =====
+    // ===== 模板管理与搜索 =====
 
     @Test
-    fun templatesFlow() {
+    fun templatesFlowAndSearch() {
         vm.repo.saveUserTemplate(
-            Template(id = "custom-1", name = "我的模板", type = TemplateType.optimize,
+            Template(id = "custom-1", name = "我的专有模板", type = TemplateType.optimize,
                 content = "你是专家助手", isBuiltin = false)
         )
         assertNotNull(vm.repo.getTemplate("custom-1"))
         assertFalse(vm.repo.getTemplate("custom-1")!!.isBuiltin)
+
+        // 搜索模板
+        val res = vm.searchTemplates("专有")
+        assertEquals(1, res.size)
+        assertEquals("custom-1", res[0].id)
+
         // 内置模板不可删除
         assertFalse(vm.repo.deleteTemplate("general-optimize"))
         // 自定义可删除
@@ -238,18 +254,23 @@ class AppFlowTest {
         assertTrue(vm.repo.getTemplate("custom-1") == null)
     }
 
-    // ===== 历史 =====
+    // ===== 历史与搜索 =====
 
     @Test
-    fun historyFlow() {
+    fun historyFlowAndSearch() {
         vm.workspaceMode = "system"
-        vm.workspaceInput = "提示词A"
+        vm.workspaceInput = "提示词A关键字"
         vm.generateWorkspacePrompt()
         vm.workspaceResult = "结果A"
         vm.recordWorkspaceResult()
 
         val h = vm.repo.getHistory()
         assertEquals(1, h.size)
+
+        // 搜索历史
+        val found = vm.searchHistory("关键字")
+        assertEquals(1, found.size)
+
         // 编辑
         val id = h[0].id
         val idx = vm.repo.data.history.indexOfFirst { it.id == id }
@@ -288,7 +309,6 @@ class AppFlowTest {
     fun builtinTemplatesAvailable() {
         val templates = vm.repo.getTemplates()
         assertTrue(templates.isNotEmpty())
-        // 关键模板都存在
         for (id in listOf(
             "general-optimize", "user-prompt-basic", "iterate", "context-message-optimize",
             "variable-extraction", "variable-value-generation", "test",
